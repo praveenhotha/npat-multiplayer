@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NPAT - Multiplayer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Home Screen -->
+        <div id="home-screen" class="screen active">
+            <h1>🎯 Name, Place, Animal, Thing</h1>
+            <p class="subtitle">Real-time Multiplayer</p>
+
+            <div class="home-actions">
+                <div class="action-card">
+                    <h2>Create Game</h2>
+                    <input type="text" id="create-name" placeholder="Your name" maxlength="15">
+                    <div class="rounds-selector">
+                        <label>Rounds:</label>
+                        <select id="create-rounds">
+                            <option value="3">3</option>
+                            <option value="5" selected>5</option>
+                            <option value="7">7</option>
+                            <option value="10">10</option>
+                        </select>
+                    </div>
+                    <button id="create-btn" class="primary-btn">Create Room</button>
+                </div>
+
+                <div class="divider">OR</div>
+
+                <div class="action-card">
+                    <h2>Join Game</h2>
+                    <input type="text" id="join-code" placeholder="Room code" maxlength="4" style="text-transform:uppercase">
+                    <input type="text" id="join-name" placeholder="Your name" maxlength="15">
+                    <button id="join-btn" class="primary-btn">Join Room</button>
+                </div>
+            </div>
+            <p id="home-error" class="error-msg"></p>
+        </div>
+
+        <!-- Lobby Screen -->
+        <div id="lobby-screen" class="screen">
+            <h1>Room: <span id="room-code" class="highlight"></span></h1>
+            <p class="subtitle">Share this code with friends to join!</p>
+
+            <div class="lobby-players">
+                <h2>Players</h2>
+                <div id="lobby-player-list"></div>
+            </div>
+
+            <div id="host-controls">
+                <button id="start-game-btn" class="primary-btn" disabled>
+                    Waiting for players...
+                </button>
+            </div>
+            <p id="lobby-status" class="info-msg">Waiting for host to start...</p>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="screen">
+            <div class="game-header">
+                <div class="round-info">Round <span id="g-round">1</span>/<span id="g-total">5</span></div>
+                <div class="alphabet-display">Letter: <span id="g-letter">A</span></div>
+                <div class="timer-display"><span id="g-timer">30</span>s</div>
+                <button id="end-game-btn" class="danger-btn">End Game</button>
+            </div>
+
+            <div class="submit-status">
+                <span id="submit-count">0</span>/<span id="player-count">0</span> submitted
+            </div>
+
+            <div class="answer-form" id="answer-form">
+                <div class="answer-field">
+                    <label>👤 Name</label>
+                    <input type="text" id="a-name" placeholder="..." autocomplete="off">
+                </div>
+                <div class="answer-field">
+                    <label>🌍 Place</label>
+                    <input type="text" id="a-place" placeholder="..." autocomplete="off">
+                </div>
+                <div class="answer-field">
+                    <label>🐾 Animal</label>
+                    <input type="text" id="a-animal" placeholder="..." autocomplete="off">
+                </div>
+                <div class="answer-field">
+                    <label>📦 Thing</label>
+                    <input type="text" id="a-thing" placeholder="..." autocomplete="off">
+                </div>
+            </div>
+
+            <button id="submit-btn" class="primary-btn">Submit Answers</button>
+            <div id="waiting-msg" class="waiting hidden">
+                ✅ Submitted! Waiting for others...
+            </div>
+        </div>
+
+        <!-- Results Screen -->
+        <div id="results-screen" class="screen">
+            <h2>Round <span id="r-round">1</span> — Letter: <span id="r-letter" class="highlight">A</span></h2>
+            <div id="results-table"></div>
+            <div id="standings"></div>
+            <div id="results-actions">
+                <button id="next-round-btn" class="primary-btn">Next Round</button>
+            </div>
+            <p id="results-wait" class="info-msg hidden">Waiting for host...</p>
+        </div>
+
+        <!-- Final Screen -->
+        <div id="final-screen" class="screen">
+            <h1>🏆 Game Over!</h1>
+            <div id="final-standings"></div>
+            <button id="play-again-btn" class="primary-btn">Play Again</button>
+            <p id="final-wait" class="info-msg hidden">Waiting for host...</p>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+</body>
+</html>
