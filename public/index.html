@@ -97,9 +97,36 @@
             </div>
         </div>
 
+        <!-- Challenge Screen -->
+        <div id="challenge-screen" class="screen">
+            <div class="challenge-header">
+                <h2>⚔️ Challenge Phase — Letter: <span id="ch-letter" class="highlight">A</span></h2>
+                <div class="challenge-timer">Time: <span id="ch-timer">15</span>s</div>
+            </div>
+            <p class="challenge-instructions">Tap ❌ to challenge answers you think are invalid. Others will vote.</p>
+
+            <div id="challenge-answers-table"></div>
+
+            <div id="active-challenges">
+                <h3>Active Challenges</h3>
+                <div id="challenges-list"></div>
+            </div>
+
+            <div id="vote-modal" class="vote-modal hidden">
+                <div class="vote-content">
+                    <p id="vote-question"></p>
+                    <div class="vote-buttons">
+                        <button id="vote-accept" class="vote-btn accept">✅ Valid</button>
+                        <button id="vote-reject" class="vote-btn reject">❌ Invalid</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Results Screen -->
         <div id="results-screen" class="screen">
             <h2>Round <span id="r-round">1</span> — Letter: <span id="r-letter" class="highlight">A</span></h2>
+            <div id="rejected-summary" class="hidden"></div>
             <div id="results-table"></div>
             <div id="standings"></div>
             <div id="results-actions">

@@ -349,9 +349,223 @@ button {
 .final-player .name { font-weight: 600; font-size: 1.05rem; flex: 1; }
 .final-player .score { font-size: 1.3rem; font-weight: 700; color: #a78bfa; }
 
+/* Challenge Screen */
+.challenge-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.challenge-timer {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #fbbf24;
+}
+
+.challenge-timer span.urgent {
+    color: #f87171;
+    animation: pulse 0.5s infinite alternate;
+}
+
+.challenge-instructions {
+    color: #aaa;
+    font-size: 0.85rem;
+    margin-bottom: 14px;
+    text-align: center;
+}
+
+#challenge-answers-table {
+    margin-bottom: 16px;
+}
+
+.challenge-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.challenge-table th,
+.challenge-table td {
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.challenge-table th {
+    background: rgba(99, 102, 241, 0.15);
+    color: #c4b5fd;
+    font-weight: 600;
+}
+
+.challenge-btn {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    margin-left: 6px;
+    transition: all 0.2s;
+}
+
+.challenge-btn:hover {
+    background: rgba(239, 68, 68, 0.3);
+}
+
+.challenge-btn.disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.answer-cell {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.answer-cell.own-answer .challenge-btn {
+    display: none;
+}
+
+.answer-cell.empty {
+    color: #555;
+}
+
+.answer-cell.challenged {
+    text-decoration: line-through;
+    color: #f87171;
+}
+
+#active-challenges {
+    margin-top: 14px;
+}
+
+#active-challenges h3 {
+    font-size: 1rem;
+    margin-bottom: 8px;
+    color: #e0e0e0;
+}
+
+.challenge-item {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+}
+
+.challenge-item.resolved-accepted {
+    border-color: rgba(52, 211, 153, 0.3);
+    background: rgba(52, 211, 153, 0.08);
+}
+
+.challenge-item.resolved-rejected {
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.12);
+}
+
+.challenge-item .status {
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+.challenge-item .status.pending { color: #fbbf24; }
+.challenge-item .status.accepted { color: #34d399; }
+.challenge-item .status.rejected { color: #f87171; }
+
+/* Vote Modal */
+.vote-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.vote-modal.hidden {
+    display: none;
+}
+
+.vote-content {
+    background: #1e1b4b;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 14px;
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+}
+
+.vote-content p {
+    margin-bottom: 16px;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.vote-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.vote-btn {
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+}
+
+.vote-btn.accept {
+    background: rgba(52, 211, 153, 0.2);
+    border: 1px solid rgba(52, 211, 153, 0.5);
+    color: #34d399;
+}
+
+.vote-btn.reject {
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    color: #f87171;
+}
+
+.vote-btn:hover {
+    transform: translateY(-1px);
+}
+
+/* Rejected summary */
+#rejected-summary {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    font-size: 0.85rem;
+    color: #f87171;
+}
+
 @media (max-width: 500px) {
     h1 { font-size: 1.5rem; }
     .game-header { flex-direction: column; align-items: flex-start; }
     .results-table { font-size: 0.75rem; }
     .results-table th, .results-table td { padding: 6px 6px; }
+    .challenge-table { font-size: 0.75rem; }
+    .vote-content { padding: 16px; }
 }

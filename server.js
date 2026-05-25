@@ -20,7 +20,7 @@ const rooms = new Map();
 setInterval(() => {
     const now = Date.now();
     for (const [code, room] of rooms) {
-        if (now - room.lastActivity > 30 * 60 * 1000) { // 30 min inactive
+        if (now - room.lastActivity > 30 * 60 * 1000) {
             rooms.delete(code);
             console.log(`Cleaned up stale room: ${code}`);
         }
@@ -28,7 +28,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 function generateRoomCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No ambiguous chars
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code;
     do {
         code = '';
@@ -53,7 +53,7 @@ io.on('connection', (socket) => {
 
         playerName = name;
         currentRoom = code;
-        room.addPlayer(socket.id, name, true); // isHost = true
+        room.addPlayer(socket.id, name, true);
         socket.join(code);
         room.lastActivity = Date.now();
 
@@ -119,7 +119,6 @@ io.on('connection', (socket) => {
             timeLimit: room.timeLimit
         });
 
-        // Start round timer
         startRoundTimer(currentRoom);
     });
 
@@ -131,18 +130,86 @@ io.on('connection', (socket) => {
         room.submitAnswer(socket.id, answers);
         room.lastActivity = Date.now();
 
-        // Notify others that this player submitted
         io.to(currentRoom).emit('player-submitted', {
             playerId: socket.id,
             submittedCount: room.getSubmittedCount(),
             totalPlayers: room.players.size
         });
 
-        // Check if all players submitted
         if (room.allAnswersSubmitted()) {
             clearRoomTimer(currentRoom);
-            finishRound(currentRoom);
+            beginChallengePhase(currentRoom);
         }
+    });
+
+    // Player challenges an answer
+    socket.on('challenge-answer', ({ targetPlayerId, category }) => {
+        const room = rooms.get(currentRoom);
+        if (!room || room.status !== 'challenging') return;
+
+        const challenge = room.addChallenge(socket.id, targetPlayerId, category);
+        if (!challenge) return;
+
+        room.lastActivity = Date.now();
+
+        // Broadcast the new challenge to all players
+        io.to(currentRoom).emit('challenge-added', {
+            challenge: {
+                id: challenge.id,
+                challengerName: challenge.challengerName,
+                targetPlayerId: challenge.targetPlayerId,
+                targetPlayerName: challenge.targetPlayerName,
+                category: challenge.category,
+                answer: challenge.answer,
+                resolved: challenge.resolved,
+                result: challenge.result
+            }
+        });
+
+        // In 2-player game, challenge auto-resolves
+        if (challenge.resolved) {
+            io.to(currentRoom).emit('challenge-resolved', {
+                challengeId: challenge.id,
+                result: challenge.result
+            });
+        }
+    });
+
+    // Player votes on a challenge
+    socket.on('vote-challenge', ({ challengeId, vote }) => {
+        const room = rooms.get(currentRoom);
+        if (!room || room.status !== 'challenging') return;
+
+        const result = room.voteOnChallenge(socket.id, challengeId, vote);
+        if (!result) return;
+
+        room.lastActivity = Date.now();
+
+        // Notify vote received
+        io.to(currentRoom).emit('vote-received', {
+            challengeId: challengeId,
+            voteCount: result.challenge.votes.size,
+            eligibleVoters: room.getEligibleVoters(result.challenge).length
+        });
+
+        // If all voted, broadcast resolution
+        if (result.allVoted) {
+            io.to(currentRoom).emit('challenge-resolved', {
+                challengeId: challengeId,
+                result: result.challenge.result
+            });
+
+            // Check if all challenges are now resolved
+            if (room.allChallengesResolved()) {
+                // Small delay so clients can see the resolution
+                setTimeout(() => finishRoundAfterChallenges(currentRoom), 1500);
+            }
+        }
+    });
+
+    // Player signals they have no challenges (skip)
+    socket.on('no-challenges', () => {
+        // This is informational — the timer handles the actual progression
     });
 
     // Host triggers next round
@@ -182,6 +249,7 @@ io.on('connection', (socket) => {
         if (!player || !player.isHost) return;
 
         clearRoomTimer(currentRoom);
+        clearChallengeTimer(currentRoom);
         room.status = 'finished';
         room.lastActivity = Date.now();
 
@@ -217,10 +285,10 @@ io.on('connection', (socket) => {
 
                 if (room.players.size === 0) {
                     clearRoomTimer(currentRoom);
+                    clearChallengeTimer(currentRoom);
                     rooms.delete(currentRoom);
                     console.log(`Room ${currentRoom} deleted (empty)`);
                 } else {
-                    // Transfer host if needed
                     if (wasHost) {
                         room.assignNewHost();
                     }
@@ -229,10 +297,14 @@ io.on('connection', (socket) => {
                         playerName: playerName
                     });
 
-                    // If game is in progress and all remaining players submitted
                     if (room.status === 'playing' && room.allAnswersSubmitted()) {
                         clearRoomTimer(currentRoom);
-                        finishRound(currentRoom);
+                        beginChallengePhase(currentRoom);
+                    }
+
+                    // If in challenge phase and all challenges resolved after disconnect
+                    if (room.status === 'challenging' && room.challenges.size > 0 && room.allChallengesResolved()) {
+                        finishRoundAfterChallenges(currentRoom);
                     }
                 }
             }
@@ -240,8 +312,10 @@ io.on('connection', (socket) => {
     });
 });
 
-// Timer management
+// ============ TIMER MANAGEMENT ============
+
 const roomTimers = new Map();
+const challengeTimers = new Map();
 
 function startRoundTimer(roomCode) {
     clearRoomTimer(roomCode);
@@ -257,7 +331,7 @@ function startRoundTimer(roomCode) {
 
         if (timeLeft <= 0) {
             clearRoomTimer(roomCode);
-            finishRound(roomCode);
+            beginChallengePhase(roomCode);
         }
     }, 1000);
 
@@ -272,21 +346,71 @@ function clearRoomTimer(roomCode) {
     }
 }
 
-function finishRound(roomCode) {
+function startChallengeTimer(roomCode) {
+    clearChallengeTimer(roomCode);
+
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    let timeLeft = room.challengeTimeLimit;
+
+    const timer = setInterval(() => {
+        timeLeft--;
+        io.to(roomCode).emit('challenge-timer-tick', { timeLeft });
+
+        if (timeLeft <= 0) {
+            clearChallengeTimer(roomCode);
+            // Force-resolve any pending challenges and finalize
+            room.forceResolveChallenges();
+            finishRoundAfterChallenges(roomCode);
+        }
+    }, 1000);
+
+    challengeTimers.set(roomCode, timer);
+}
+
+function clearChallengeTimer(roomCode) {
+    const timer = challengeTimers.get(roomCode);
+    if (timer) {
+        clearInterval(timer);
+        challengeTimers.delete(roomCode);
+    }
+}
+
+// ============ GAME FLOW ============
+
+function beginChallengePhase(roomCode) {
     const room = rooms.get(roomCode);
     if (!room || room.status !== 'playing') return;
 
-    const results = room.scoreCurrentRound();
+    const preliminaryResults = room.beginChallengePhase();
+
+    io.to(roomCode).emit('challenge-phase-started', {
+        round: room.currentRound,
+        letter: room.currentLetter,
+        results: preliminaryResults,
+        challengeTimeLimit: room.challengeTimeLimit
+    });
+
+    startChallengeTimer(roomCode);
+}
+
+function finishRoundAfterChallenges(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room || room.status !== 'challenging') return;
+
+    clearChallengeTimer(roomCode);
+
+    const finalResults = room.finalizeScores();
 
     io.to(roomCode).emit('round-results', {
         round: room.currentRound,
         letter: room.currentLetter,
-        results: results,
+        results: finalResults,
+        challenges: room.getChallengesForClient(),
         standings: room.getStandings(),
         hasMoreRounds: room.hasMoreRounds()
     });
-
-    room.status = 'scoring';
 }
 
 server.listen(PORT, () => {

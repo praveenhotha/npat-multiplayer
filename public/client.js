@@ -2,6 +2,8 @@ const socket = io();
 
 let isHost = false;
 let hasSubmitted = false;
+let currentVoteQueue = []; // Queue of challenges waiting for this player's vote
+let challengedAnswers = new Set(); // Track which answers have been challenged (targetId_category)
 
 // ============ DOM ELEMENTS ============
 
@@ -9,6 +11,7 @@ const screens = {
     home: document.getElementById('home-screen'),
     lobby: document.getElementById('lobby-screen'),
     game: document.getElementById('game-screen'),
+    challenge: document.getElementById('challenge-screen'),
     results: document.getElementById('results-screen'),
     final: document.getElementById('final-screen')
 };
@@ -44,7 +47,6 @@ document.getElementById('join-btn').addEventListener('click', () => {
     socket.emit('join-room', { code, name });
 });
 
-// Enter key support
 document.getElementById('create-name').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') document.getElementById('create-btn').click();
 });
@@ -71,7 +73,6 @@ function renderLobbyPlayers(players) {
         </div>
     `).join('');
 
-    // Update start button
     const startBtn = document.getElementById('start-game-btn');
     const hostControls = document.getElementById('host-controls');
     const lobbyStatus = document.getElementById('lobby-status');
@@ -130,32 +131,204 @@ function setupGameScreen(data) {
     document.getElementById('submit-count').textContent = '0';
     document.getElementById('player-count').textContent = data.totalPlayers || '?';
 
-    // Reset form
     document.getElementById('a-name').value = '';
     document.getElementById('a-place').value = '';
     document.getElementById('a-animal').value = '';
     document.getElementById('a-thing').value = '';
 
-    // Update placeholders
     const letter = data.letter;
     document.getElementById('a-name').placeholder = `Name starting with ${letter}`;
     document.getElementById('a-place').placeholder = `Place starting with ${letter}`;
     document.getElementById('a-animal').placeholder = `Animal starting with ${letter}`;
     document.getElementById('a-thing').placeholder = `Thing starting with ${letter}`;
 
-    // Show form, hide waiting
     document.getElementById('submit-btn').classList.remove('hidden');
     document.getElementById('answer-form').style.opacity = '1';
     document.getElementById('answer-form').style.pointerEvents = 'auto';
     document.getElementById('waiting-msg').classList.add('hidden');
 
-    // Show/hide end game button
     document.getElementById('end-game-btn').style.display = isHost ? 'block' : 'none';
-
-    // Focus first input
     document.getElementById('a-name').focus();
 
     showScreen('game');
+}
+
+// ============ CHALLENGE SCREEN ============
+
+function showChallengePhase(data) {
+    challengedAnswers = new Set();
+    currentVoteQueue = [];
+
+    document.getElementById('ch-letter').textContent = data.letter;
+    document.getElementById('ch-timer').textContent = data.challengeTimeLimit;
+    document.getElementById('challenges-list').innerHTML = '<p style="color:#666;font-size:0.85rem">No challenges yet</p>';
+    document.getElementById('vote-modal').classList.add('hidden');
+
+    // Build the answers table with challenge buttons
+    const categories = ['name', 'place', 'animal', 'thing'];
+    const catLabels = { name: '👤 Name', place: '🌍 Place', animal: '🐾 Animal', thing: '📦 Thing' };
+
+    let html = `<table class="challenge-table"><thead><tr>
+        <th>Player</th>`;
+    for (const cat of categories) {
+        html += `<th>${catLabels[cat]}</th>`;
+    }
+    html += `</tr></thead><tbody>`;
+
+    for (const r of data.results) {
+        const isMe = r.playerId === socket.id;
+        html += `<tr><td>${r.playerName}${isMe ? ' (you)' : ''}</td>`;
+
+        for (const cat of categories) {
+            const val = r.answers[cat] || '';
+            const score = r.scores[cat];
+            const hasAnswer = val && score > 0;
+
+            if (!hasAnswer) {
+                html += `<td><span class="answer-cell empty">${val || '—'}</span></td>`;
+            } else if (isMe) {
+                html += `<td><span class="answer-cell own-answer">${val}</span></td>`;
+            } else {
+                const cellId = `cell_${r.playerId}_${cat}`;
+                html += `<td><span class="answer-cell" id="${cellId}">${val} 
+                    <button class="challenge-btn" 
+                        data-target="${r.playerId}" 
+                        data-category="${cat}"
+                        data-answer="${val}">❌</button>
+                </span></td>`;
+            }
+        }
+        html += `</tr>`;
+    }
+    html += `</tbody></table>`;
+
+    document.getElementById('challenge-answers-table').innerHTML = html;
+
+    // Bind challenge buttons
+    document.querySelectorAll('.challenge-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const target = e.target.dataset.target;
+            const category = e.target.dataset.category;
+            const key = `${target}_${category}`;
+
+            if (challengedAnswers.has(key)) return;
+
+            socket.emit('challenge-answer', { targetPlayerId: target, category });
+            e.target.classList.add('disabled');
+            e.target.textContent = '⏳';
+        });
+    });
+
+    showScreen('challenge');
+}
+
+function addChallengeToList(challenge) {
+    const key = `${challenge.targetPlayerId}_${challenge.category}`;
+    challengedAnswers.add(key);
+
+    // Disable the challenge button for this answer
+    const btn = document.querySelector(`.challenge-btn[data-target="${challenge.targetPlayerId}"][data-category="${challenge.category}"]`);
+    if (btn) {
+        btn.classList.add('disabled');
+        btn.textContent = '⚔️';
+    }
+
+    // Mark the cell
+    const cellId = `cell_${challenge.targetPlayerId}_${challenge.category}`;
+    const cell = document.getElementById(cellId);
+    if (cell) {
+        cell.classList.add('challenged');
+    }
+
+    // Add to challenges list
+    const list = document.getElementById('challenges-list');
+    if (list.querySelector('p')) {
+        list.innerHTML = ''; // Remove "no challenges" message
+    }
+
+    const catLabels = { name: 'Name', place: 'Place', animal: 'Animal', thing: 'Thing' };
+    const item = document.createElement('div');
+    item.className = 'challenge-item';
+    item.id = `challenge-${challenge.id}`;
+    item.innerHTML = `
+        <span>${challenge.challengerName} challenged <strong>${challenge.targetPlayerName}</strong>'s ${catLabels[challenge.category]}: "${challenge.answer}"</span>
+        <span class="status ${challenge.resolved ? challenge.result : 'pending'}">
+            ${challenge.resolved ? (challenge.result === 'rejected' ? '❌ Rejected' : '✅ Accepted') : '⏳ Voting...'}
+        </span>
+    `;
+    list.appendChild(item);
+
+    // If this challenge needs my vote (I'm not the challenger or target)
+    if (!challenge.resolved && challenge.targetPlayerId !== socket.id) {
+        // The challenger doesn't vote either — server handles this,
+        // but we check client-side for UX
+        const amChallenger = challenge.challengerName === getMyName();
+        if (!amChallenger) {
+            currentVoteQueue.push(challenge);
+            showNextVote();
+        }
+    }
+}
+
+function getMyName() {
+    // Get from whichever input was used
+    return document.getElementById('create-name').value.trim() ||
+           document.getElementById('join-name').value.trim() || '';
+}
+
+function showNextVote() {
+    if (currentVoteQueue.length === 0) {
+        document.getElementById('vote-modal').classList.add('hidden');
+        return;
+    }
+
+    const challenge = currentVoteQueue[0];
+    const catLabels = { name: 'Name', place: 'Place', animal: 'Animal', thing: 'Thing' };
+
+    document.getElementById('vote-question').innerHTML = `
+        Is "<strong>${challenge.answer}</strong>" a valid <strong>${catLabels[challenge.category]}</strong>?
+        <br><small style="color:#aaa">${challenge.challengerName} challenged ${challenge.targetPlayerName}'s answer</small>
+    `;
+
+    document.getElementById('vote-modal').classList.remove('hidden');
+
+    // Bind vote buttons (remove old listeners by replacing elements)
+    const acceptBtn = document.getElementById('vote-accept');
+    const rejectBtn = document.getElementById('vote-reject');
+    const newAccept = acceptBtn.cloneNode(true);
+    const newReject = rejectBtn.cloneNode(true);
+    acceptBtn.parentNode.replaceChild(newAccept, acceptBtn);
+    rejectBtn.parentNode.replaceChild(newReject, rejectBtn);
+
+    newAccept.addEventListener('click', () => {
+        socket.emit('vote-challenge', { challengeId: challenge.id, vote: 'accept' });
+        currentVoteQueue.shift();
+        showNextVote();
+    });
+
+    newReject.addEventListener('click', () => {
+        socket.emit('vote-challenge', { challengeId: challenge.id, vote: 'reject' });
+        currentVoteQueue.shift();
+        showNextVote();
+    });
+}
+
+function resolveChallengeUI(challengeId, result) {
+    const item = document.getElementById(`challenge-${challengeId}`);
+    if (item) {
+        item.className = `challenge-item resolved-${result}`;
+        const statusEl = item.querySelector('.status');
+        if (statusEl) {
+            statusEl.className = `status ${result}`;
+            statusEl.textContent = result === 'rejected' ? '❌ Rejected' : '✅ Accepted';
+        }
+    }
+
+    // Remove from vote queue if still pending
+    currentVoteQueue = currentVoteQueue.filter(c => c.id !== challengeId);
+    if (currentVoteQueue.length === 0) {
+        document.getElementById('vote-modal').classList.add('hidden');
+    }
 }
 
 // ============ RESULTS SCREEN ============
@@ -167,6 +340,18 @@ document.getElementById('next-round-btn').addEventListener('click', () => {
 function showRoundResults(data) {
     document.getElementById('r-round').textContent = data.round;
     document.getElementById('r-letter').textContent = data.letter;
+
+    // Show rejected answers summary
+    const rejectedSummary = document.getElementById('rejected-summary');
+    const rejectedChallenges = (data.challenges || []).filter(c => c.result === 'rejected');
+    if (rejectedChallenges.length > 0) {
+        const catLabels = { name: 'Name', place: 'Place', animal: 'Animal', thing: 'Thing' };
+        rejectedSummary.innerHTML = `<strong>⚔️ Rejected answers:</strong> ` +
+            rejectedChallenges.map(c => `${c.targetPlayerName}'s ${catLabels[c.category]} ("${c.answer}")`).join(', ');
+        rejectedSummary.classList.remove('hidden');
+    } else {
+        rejectedSummary.classList.add('hidden');
+    }
 
     // Build table
     const categories = ['name', 'place', 'animal', 'thing'];
@@ -198,7 +383,6 @@ function showRoundResults(data) {
             </div>
         `).join('');
 
-    // Show/hide next round button based on host
     const nextBtn = document.getElementById('next-round-btn');
     const waitMsg = document.getElementById('results-wait');
 
@@ -231,7 +415,6 @@ function showFinalScreen(data) {
         </div>
     `).join('');
 
-    // Show play again only for host
     const playAgainBtn = document.getElementById('play-again-btn');
     const finalWait = document.getElementById('final-wait');
     if (isHost) {
@@ -267,7 +450,6 @@ socket.on('player-joined', (data) => {
 });
 
 socket.on('player-left', (data) => {
-    // Check if we became host
     const me = data.players.find(p => p.id === socket.id);
     if (me && me.isHost) {
         isHost = true;
@@ -293,7 +475,6 @@ socket.on('timer-tick', (data) => {
         timerEl.classList.remove('urgent');
     }
 
-    // Auto-submit when time runs out
     if (data.timeLeft <= 0 && !hasSubmitted) {
         submitAnswers();
     }
@@ -304,6 +485,34 @@ socket.on('player-submitted', (data) => {
     document.getElementById('player-count').textContent = data.totalPlayers;
 });
 
+// Challenge phase events
+socket.on('challenge-phase-started', (data) => {
+    showChallengePhase(data);
+});
+
+socket.on('challenge-timer-tick', (data) => {
+    const timerEl = document.getElementById('ch-timer');
+    timerEl.textContent = data.timeLeft;
+    if (data.timeLeft <= 5) {
+        timerEl.classList.add('urgent');
+    } else {
+        timerEl.classList.remove('urgent');
+    }
+});
+
+socket.on('challenge-added', (data) => {
+    addChallengeToList(data.challenge);
+});
+
+socket.on('vote-received', (data) => {
+    // Could show vote progress indicator — keeping it simple for now
+});
+
+socket.on('challenge-resolved', (data) => {
+    resolveChallengeUI(data.challengeId, data.result);
+});
+
+// Final results after challenges
 socket.on('round-results', (data) => {
     showRoundResults(data);
 });
